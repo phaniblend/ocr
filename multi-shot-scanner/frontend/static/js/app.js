@@ -53,23 +53,51 @@ class MultiShotScanner {
 
     async startCamera() {
         try {
+            // Try different camera configurations for better iOS compatibility
             const constraints = {
                 video: {
-                    facingMode: 'environment',
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
-                }
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1920, max: 1920 },
+                    height: { ideal: 1080, max: 1080 }
+                },
+                audio: false
             };
             
+            // Request camera permission
             this.currentStream = await navigator.mediaDevices.getUserMedia(constraints);
             this.video.srcObject = this.currentStream;
+            
+            // Important: Set video attributes for iOS
+            this.video.setAttribute('autoplay', '');
+            this.video.setAttribute('muted', '');
+            this.video.setAttribute('playsinline', '');
+            
+            // Play video explicitly
+            await this.video.play();
             
             this.elements.cameraContainer.style.display = 'block';
             this.elements.startCamera.style.display = 'none';
             this.elements.captureImage.style.display = 'inline-flex';
             this.elements.stopCamera.style.display = 'inline-flex';
         } catch (error) {
-            alert('Camera access failed: ' + error.message);
+            console.error('Camera error:', error);
+            // Fallback for iOS
+            try {
+                const fallbackConstraints = {
+                    video: true,
+                    audio: false
+                };
+                this.currentStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+                this.video.srcObject = this.currentStream;
+                await this.video.play();
+                
+                this.elements.cameraContainer.style.display = 'block';
+                this.elements.startCamera.style.display = 'none';
+                this.elements.captureImage.style.display = 'inline-flex';
+                this.elements.stopCamera.style.display = 'inline-flex';
+            } catch (fallbackError) {
+                alert('Camera access failed. Please ensure you are using Safari and have granted camera permissions.');
+            }
         }
     }
 
@@ -100,6 +128,7 @@ class MultiShotScanner {
             this.currentStream = null;
         }
         
+        this.video.srcObject = null;
         this.elements.cameraContainer.style.display = 'none';
         this.elements.startCamera.style.display = 'inline-flex';
         this.elements.captureImage.style.display = 'none';
@@ -161,40 +190,193 @@ class MultiShotScanner {
 
     initCropBox(canvasWidth, canvasHeight) {
         const cropBox = this.elements.cropBox;
-        cropBox.style.left = '20px';
-        cropBox.style.top = '20px';
-        cropBox.style.width = (canvasWidth - 40) + 'px';
-        cropBox.style.height = (canvasHeight - 40) + 'px';
+        const container = this.elements.cropCanvas.parentElement;
         
-        this.makeCropBoxDraggable();
+        // Set initial crop box size and position
+        const initialSize = Math.min(canvasWidth * 0.8, canvasHeight * 0.8);
+        cropBox.style.width = initialSize + 'px';
+        cropBox.style.height = (initialSize * 0.75) + 'px';
+        cropBox.style.left = ((canvasWidth - initialSize) / 2) + 'px';
+        cropBox.style.top = '20px';
+        
+        // Clear existing resize handles
+        cropBox.innerHTML = '';
+        
+        // Add resize handles
+        const handles = ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'];
+        handles.forEach(handle => {
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = 'resize-handle resize-' + handle;
+            resizeHandle.style.cssText = `
+                position: absolute;
+                background: #4a90e2;
+                border: 2px solid white;
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                z-index: 10;
+            `;
+            
+            // Position handles
+            switch(handle) {
+                case 'nw': resizeHandle.style.top = '-6px'; resizeHandle.style.left = '-6px'; break;
+                case 'ne': resizeHandle.style.top = '-6px'; resizeHandle.style.right = '-6px'; break;
+                case 'sw': resizeHandle.style.bottom = '-6px'; resizeHandle.style.left = '-6px'; break;
+                case 'se': resizeHandle.style.bottom = '-6px'; resizeHandle.style.right = '-6px'; break;
+                case 'n': resizeHandle.style.top = '-6px'; resizeHandle.style.left = '50%'; resizeHandle.style.transform = 'translateX(-50%)'; break;
+                case 's': resizeHandle.style.bottom = '-6px'; resizeHandle.style.left = '50%'; resizeHandle.style.transform = 'translateX(-50%)'; break;
+                case 'e': resizeHandle.style.right = '-6px'; resizeHandle.style.top = '50%'; resizeHandle.style.transform = 'translateY(-50%)'; break;
+                case 'w': resizeHandle.style.left = '-6px'; resizeHandle.style.top = '50%'; resizeHandle.style.transform = 'translateY(-50%)'; break;
+            }
+            
+            cropBox.appendChild(resizeHandle);
+        });
+        
+        this.makeCropBoxInteractive();
     }
 
-    makeCropBoxDraggable() {
+    makeCropBoxInteractive() {
         const cropBox = this.elements.cropBox;
+        const canvas = this.elements.cropCanvas;
         let isDragging = false;
-        let startX, startY, initialX, initialY;
+        let isResizing = false;
+        let currentHandle = null;
+        let startX, startY, startWidth, startHeight, startLeft, startTop;
         
-        cropBox.onmousedown = (e) => {
-            isDragging = true;
-            startX = e.clientX;
-            startY = e.clientY;
-            initialX = cropBox.offsetLeft;
-            initialY = cropBox.offsetTop;
-        };
+        // Make crop box draggable
+        cropBox.addEventListener('mousedown', (e) => {
+            if (e.target.classList.contains('resize-handle')) {
+                isResizing = true;
+                currentHandle = e.target.className.split('resize-')[1];
+                startX = e.clientX;
+                startY = e.clientY;
+                startWidth = parseInt(cropBox.style.width);
+                startHeight = parseInt(cropBox.style.height);
+                startLeft = cropBox.offsetLeft;
+                startTop = cropBox.offsetTop;
+            } else {
+                isDragging = true;
+                startX = e.clientX - cropBox.offsetLeft;
+                startY = e.clientY - cropBox.offsetTop;
+            }
+            e.preventDefault();
+        });
         
-        document.onmousemove = (e) => {
-            if (!isDragging) return;
+        // Touch events for mobile
+        cropBox.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            if (e.target.classList.contains('resize-handle')) {
+                isResizing = true;
+                currentHandle = e.target.className.split('resize-')[1];
+                startX = touch.clientX;
+                startY = touch.clientY;
+                startWidth = parseInt(cropBox.style.width);
+                startHeight = parseInt(cropBox.style.height);
+                startLeft = cropBox.offsetLeft;
+                startTop = cropBox.offsetTop;
+            } else {
+                isDragging = true;
+                startX = touch.clientX - cropBox.offsetLeft;
+                startY = touch.clientY - cropBox.offsetTop;
+            }
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const newLeft = e.clientX - startX;
+                const newTop = e.clientY - startY;
+                
+                // Constrain to canvas bounds
+                cropBox.style.left = Math.max(0, Math.min(newLeft, canvas.width - cropBox.offsetWidth)) + 'px';
+                cropBox.style.top = Math.max(0, Math.min(newTop, canvas.height - cropBox.offsetHeight)) + 'px';
+            } else if (isResizing) {
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                
+                let newWidth = startWidth;
+                let newHeight = startHeight;
+                let newLeft = startLeft;
+                let newTop = startTop;
+                
+                // Handle resize based on handle position
+                if (currentHandle.includes('e')) newWidth = startWidth + dx;
+                if (currentHandle.includes('w')) {
+                    newWidth = startWidth - dx;
+                    newLeft = startLeft + dx;
+                }
+                if (currentHandle.includes('s')) newHeight = startHeight + dy;
+                if (currentHandle.includes('n')) {
+                    newHeight = startHeight - dy;
+                    newTop = startTop + dy;
+                }
+                
+                // Apply constraints
+                if (newWidth > 50 && newLeft >= 0 && newLeft + newWidth <= canvas.width) {
+                    cropBox.style.width = newWidth + 'px';
+                    cropBox.style.left = newLeft + 'px';
+                }
+                if (newHeight > 50 && newTop >= 0 && newTop + newHeight <= canvas.height) {
+                    cropBox.style.height = newHeight + 'px';
+                    cropBox.style.top = newTop + 'px';
+                }
+            }
+        });
+        
+        // Touch move for mobile
+        document.addEventListener('touchmove', (e) => {
+            if (!isDragging && !isResizing) return;
             
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
+            const touch = e.touches[0];
             
-            cropBox.style.left = (initialX + dx) + 'px';
-            cropBox.style.top = (initialY + dy) + 'px';
-        };
+            if (isDragging) {
+                const newLeft = touch.clientX - startX;
+                const newTop = touch.clientY - startY;
+                
+                cropBox.style.left = Math.max(0, Math.min(newLeft, canvas.width - cropBox.offsetWidth)) + 'px';
+                cropBox.style.top = Math.max(0, Math.min(newTop, canvas.height - cropBox.offsetHeight)) + 'px';
+            } else if (isResizing) {
+                const dx = touch.clientX - startX;
+                const dy = touch.clientY - startY;
+                
+                let newWidth = startWidth;
+                let newHeight = startHeight;
+                let newLeft = startLeft;
+                let newTop = startTop;
+                
+                if (currentHandle.includes('e')) newWidth = startWidth + dx;
+                if (currentHandle.includes('w')) {
+                    newWidth = startWidth - dx;
+                    newLeft = startLeft + dx;
+                }
+                if (currentHandle.includes('s')) newHeight = startHeight + dy;
+                if (currentHandle.includes('n')) {
+                    newHeight = startHeight - dy;
+                    newTop = startTop + dy;
+                }
+                
+                if (newWidth > 50 && newLeft >= 0 && newLeft + newWidth <= canvas.width) {
+                    cropBox.style.width = newWidth + 'px';
+                    cropBox.style.left = newLeft + 'px';
+                }
+                if (newHeight > 50 && newTop >= 0 && newTop + newHeight <= canvas.height) {
+                    cropBox.style.height = newHeight + 'px';
+                    cropBox.style.top = newTop + 'px';
+                }
+            }
+        });
         
-        document.onmouseup = () => {
+        document.addEventListener('mouseup', () => {
             isDragging = false;
-        };
+            isResizing = false;
+            currentHandle = null;
+        });
+        
+        document.addEventListener('touchend', () => {
+            isDragging = false;
+            isResizing = false;
+            currentHandle = null;
+        });
     }
 
     applyPreset(preset) {
