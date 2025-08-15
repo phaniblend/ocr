@@ -1,0 +1,93 @@
+<!-- File: frontend/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Multi-Shot Document Scanner</title>
+    <link rel="stylesheet" href="static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📸 Multi-Shot Scanner</h1>
+            <p class="subtitle">Capture → Crop → Stitch → Analyze</p>
+        </header>
+
+        <div class="controls">
+            <button id="startCamera" class="btn btn-primary">
+                <span class="icon">📷</span>
+                Start Camera
+            </button>
+            <button id="captureImage" class="btn btn-success" style="display:none;">
+                <span class="icon">📸</span>
+                Add Image
+            </button>
+            <button id="stopCamera" class="btn btn-danger" style="display:none;">
+                <span class="icon">⏹️</span>
+                Stop Camera
+            </button>
+        </div>
+
+        <div id="cameraContainer" style="display:none;">
+            <video id="video" playsinline></video>
+        </div>
+
+        <div id="capturedImages" class="captured-images"></div>
+
+        <div id="stitchControls" class="stitch-controls" style="display:none;">
+            <button id="stitchImages" class="btn btn-primary">
+                <span class="icon">🧩</span>
+                Stitch Images
+            </button>
+        </div>
+
+        <div id="stitchedResult" class="stitched-result" style="display:none;">
+            <h3>Stitched Document</h3>
+            <canvas id="stitchedCanvas"></canvas>
+        </div>
+
+        <div id="codeInput" class="code-input" style="display:none;">
+            <h3>React Code (Paste your component code)</h3>
+            <textarea id="reactCode" placeholder="import React from 'react';&#10;&#10;const MyComponent = () => {&#10;  // Your component code here&#10;};"></textarea>
+        </div>
+
+        <div id="aiControls" class="ai-controls" style="display:none;">
+            <button id="sendToAI" class="btn btn-action">
+                <span class="icon">🚀</span>
+                Send to AI for Analysis
+            </button>
+        </div>
+
+        <div id="result" class="result" style="display:none;">
+            <h3>AI Analysis Result</h3>
+            <pre id="resultContent"></pre>
+        </div>
+
+        <div id="cropModal" class="modal" style="display:none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Crop Image</h3>
+                    <button class="close-modal">&times;</button>
+                </div>
+                <div class="crop-presets">
+                    <button class="preset-btn" data-preset="code">💻 Code/IDE</button>
+                    <button class="preset-btn" data-preset="figma">🎨 Figma/Design</button>
+                    <button class="preset-btn" data-preset="document">📄 Document</button>
+                    <button class="preset-btn" data-preset="full">🖼️ Full Image</button>
+                </div>
+                <div class="crop-container">
+                    <canvas id="cropCanvas"></canvas>
+                    <div id="cropBox" class="crop-box"></div>
+                </div>
+                <div class="modal-actions">
+                    <button id="cancelCrop" class="btn btn-secondary">Cancel</button>
+                    <button id="applyCrop" class="btn btn-primary">Apply Crop</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="static/js/app.js"></script>
+</body>
+</html>
